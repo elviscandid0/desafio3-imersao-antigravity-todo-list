@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Bateria de Testes Automatizados - Lista de Tarefas</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+    #log { font-family: monospace; white-space: pre-wrap; background: #f4f4f4; padding: 15px; border-radius: 8px; margin-top: 15px; }
+  </style>
+</head>
+<body>
+  <h1>Resultado dos Testes</h1>
+  <div id="test-summary">Executando testes...</div>
+  <div id="log"></div>
+
+  <!-- Estrutura da Aplicação para o ambiente de testes (visível para permitir eventos de clique padrão) -->
+  <div id="app-test-container" style="opacity: 0.01; position: absolute; pointer-events: auto;">
+    <input type="text" id="taskInput">
+    <button id="addBtn" type="button">Adicionar</button>
+    <div class="task-summary">
+      <span id="taskCount">0 tarefas</span>
+      <span id="completedCount">0 concluídas</span>
+    </div>
+    <ul id="taskList" class="task-list"></ul>
+    <div id="emptyMessage" class="empty-message"></div>
+  </div>
+
+  <!-- Carrega o script da aplicação -->
+  <script src="script.js"></script>
+
+  <!-- Script da suíte de testes -->
+  <script>
+    const logEl = document.getElementById("log");
+    const summaryEl = document.getElementById("test-summary");
+    let passed = 0;
+    let failed = 0;
+    const logs = [];
+
+    function log(msg) {
+      logs.push(msg);
+      logEl.textContent = logs.join("\n");
+    }
+
+    function assert(condition, testName) {
+      if (condition) {
+        passed++;
+        log(`[PASS] ${testName}`);
+      } else {
+        failed++;
+        log(`[FAIL] ${testName}`);
+      }
+    }
+
+    function runTests() {
+      log("=== INICIANDO TESTES AUTOMATIZADOS ===\n");
+
+      // 0. Limpa estado inicial
+      localStorage.clear();
+      tasks = [];
+      salvarTarefasNoArmazenamento();
+      renderizarTarefas();
+
+      // TESTE 1: Estado Inicial
+      assert(taskList.children.length === 0, "1.1 - Lista inicia vazia");
+      assert(emptyMessage.style.display === "block", "1.2 - Mensagem de vazio visível inicialmente");
+      assert(taskCount.textContent.includes("0"), "1.3 - Contador de tarefas zerado");
+      assert(completedCount.textContent.includes("0"), "1.4 - Contador de concluídas zerado");
+
+      // TESTE 2: Adicionar Tarefa via Botão
+      taskInput.value = "Estudar JavaScript";
+      addBtn.click();
+      assert(taskList.children.length === 1, "2.1 - Tarefa adicionada via clique no botão");
+      
+      let item1 = taskList.children[0];
+      assert(item1.querySelector(".task-text").textContent === "Estudar JavaScript", "2.2 - Texto da tarefa correto");
+      assert(!item1.classList.contains("completed"), "2.3 - Tarefa pendente NÃO possui classe 'completed'");
+      assert(item1.querySelector(".status-badge") === null, "2.4 - Tarefa pendente NÃO possui badge 'Concluída'");
+      assert(item1.querySelector(".task-checkbox").checked === false, "2.5 - Checkbox inicia desmarcado");
+      assert(taskInput.value === "", "2.6 - Campo de entrada foi limpo após adicionar");
+      assert(taskCount.textContent.includes("1 tarefa"), "2.7 - Contador atualizado para 1 tarefa");
+      assert(emptyMessage.style.display === "none", "2.8 - Mensagem de vazio desaparece");
+
+      // TESTE 3: Adicionar Tarefa via Tecla Enter
+      taskInput.value = "Fazer exercícios de CSS";
+      taskInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      assert(taskList.children.length === 2, "3.1 - Tarefa adicionada via tecla Enter");
+      assert(taskCount.textContent.includes("2 tarefas"), "3.2 - Contador atualizado para 2 tarefas");
+
+      // TESTE 4: Validação de Entrada Vazia
+      taskInput.value = "    ";
+      addBtn.click();
+      assert(taskList.children.length === 2, "4.1 - Não permite adicionar tarefa vazia ou com espaços");
+
+      // TESTE 5: Concluir Tarefa (Alternar status pelo checkbox)
+      item1 = taskList.children[0];
+      const checkbox1 = item1.querySelector(".task-checkbox");
+      // Simula a mudança no checkbox
+      checkbox1.checked = true;
+      checkbox1.dispatchEvent(new Event("change"));
+
+      // Pega a referência atualizada do item após renderização
+      item1 = taskList.children[0];
+      assert(item1.classList.contains("completed"), "5.1 - Tarefa concluída recebe classe 'completed'");
+      assert(item1.querySelector(".task-checkbox").checked === true, "5.2 - Checkbox fica marcado");
+      const badge = item1.querySelector(".status-badge");
+      assert(badge !== null && badge.textContent === "Concluída", "5.3 - Etiqueta (badge) 'Concluída' foi inserida visualmente");
+      assert(completedCount.textContent.includes("1 concluída"), "5.4 - Contador de concluídas atualizado para 1");
+
+      // TESTE 6: Desmarcar Tarefa Concluída (clicando no texto)
+      item1 = taskList.children[0];
+      const spanTexto1 = item1.querySelector(".task-text");
+      spanTexto1.click(); // Clica no texto para desmarcar
+
+      // Pega a referência atualizada após nova renderização
+      item1 = taskList.children[0];
+      assert(!item1.classList.contains("completed"), "6.1 - Classe 'completed' removida ao desmarcar");
+      assert(item1.querySelector(".task-checkbox").checked === false, "6.2 - Checkbox desmarcado");
+      assert(item1.querySelector(".status-badge") === null, "6.3 - Etiqueta 'Concluída' foi removida");
+      assert(completedCount.textContent.includes("0 concluídas"), "6.4 - Contador de concluídas volta a zero");
+
+      // TESTE 7: Persistência no LocalStorage
+      // Marca a 2ª tarefa como concluída
+      let item2 = taskList.children[1];
+      const checkbox2 = item2.querySelector(".task-checkbox");
+      checkbox2.checked = true;
+      checkbox2.dispatchEvent(new Event("change"));
+      
+      const storageRaw = localStorage.getItem("minhas_tarefas");
+      assert(storageRaw !== null, "7.1 - Dados salvos no LocalStorage");
+      const storageTasks = JSON.parse(storageRaw);
+      assert(storageTasks.length === 2, "7.2 - LocalStorage contém exatamente 2 tarefas");
+      assert(storageTasks[0].completed === false, "7.3 - Primeira tarefa persistida como pendente");
+      assert(storageTasks[1].completed === true, "7.4 - Segunda tarefa persistida como concluída");
+
+      // Teste de restauração a partir do LocalStorage
+      const restauradas = carregarTarefasDoArmazenamento();
+      assert(restauradas.length === 2 && restauradas[1].text === "Fazer exercícios de CSS", "7.5 - Função carregarTarefasDoArmazenamento restaura dados com precisão");
+
+      // TESTE 8: Remover Tarefa
+      // Remove a primeira tarefa
+      const deleteBtn1 = taskList.children[0].querySelector(".delete-btn");
+      deleteBtn1.click();
+      assert(taskList.children.length === 1, "8.1 - Tarefa removida com sucesso");
+      assert(taskList.children[0].querySelector(".task-text").textContent === "Fazer exercícios de CSS", "8.2 - Restou a tarefa correta");
+      assert(taskCount.textContent.includes("1 tarefa"), "8.3 - Contador atualizado após remoção");
+
+      // Remove a última tarefa
+      const deleteBtn2 = taskList.children[0].querySelector(".delete-btn");
+      deleteBtn2.click();
+      assert(taskList.children.length === 0, "8.4 - Todas as tarefas removidas");
+      assert(emptyMessage.style.display === "block", "8.5 - Mensagem de vazio reaparece");
+      assert(taskCount.textContent.includes("0 tarefas"), "8.6 - Contador de tarefas zerado");
+      assert(completedCount.textContent.includes("0 concluídas"), "8.7 - Contador de concluídas zerado");
+      assert(JSON.parse(localStorage.getItem("minhas_tarefas")).length === 0, "8.8 - LocalStorage atualizado para lista vazia");
+
+      // Resumo final
+      log("\n=== TESTES FINALIZADOS ===");
+      log(`Total de testes: ${passed + failed}`);
+      log(`Sucessos: ${passed}`);
+      log(`Falhas: ${failed}`);
+
+      if (failed === 0) {
+        summaryEl.innerHTML = `<span class="pass">TODOS OS ${passed} TESTES PASSARAM COM SUCESSO!</span>`;
+      } else {
+        summaryEl.innerHTML = `<span class="fail">${failed} TESTES FALHARAM!</span>`;
+      }
+    }
+
+    // Executa os testes após carregar o DOM
+    window.addEventListener("DOMContentLoaded", runTests);
+  </script>
+</body>
+</html>
